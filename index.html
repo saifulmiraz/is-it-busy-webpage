@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Is it Busy? — Campus Facility Status</title>
+<style>
+  :root {
+    --navy: #0D1B4B;
+    --blue: #1A56BB;
+    --mint: #00C9A7;
+    --green: #00C9A7;
+    --amber: #F9A825;
+    --red: #E53935;
+    --bg: #F0F4FA;
+    --card: #FFFFFF;
+    --text: #1A1A2E;
+    --muted: #6B7894;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px 16px 40px;
+  }
+
+  .wrap { width: 100%; max-width: 440px; }
+
+  header { text-align: center; margin: 8px 0 24px; }
+  header .logo {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 13px; font-weight: 700; letter-spacing: 0.5px;
+    color: var(--blue); text-transform: uppercase;
+  }
+  header h1 { font-size: 34px; font-weight: 800; color: var(--navy); margin-top: 6px; }
+  header p { font-size: 14px; color: var(--muted); margin-top: 4px; }
+
+  /* Facility selector */
+  .selector {
+    display: flex; gap: 8px; margin-bottom: 20px; overflow-x: auto;
+    padding-bottom: 4px; -webkit-overflow-scrolling: touch;
+  }
+  .selector button {
+    flex: 0 0 auto; padding: 10px 18px; border-radius: 20px; border: 2px solid #D8E2F0;
+    background: var(--card); color: var(--muted); font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: all 0.18s; white-space: nowrap;
+  }
+  .selector button.active { background: var(--navy); color: #fff; border-color: var(--navy); }
+
+  /* Status card */
+  .status-card {
+    background: var(--card); border-radius: 20px; padding: 28px 24px; text-align: center;
+    box-shadow: 0 8px 30px rgba(13,27,75,0.08); margin-bottom: 24px;
+    border-top: 6px solid var(--muted); transition: border-color 0.3s;
+  }
+  .status-card .facility-name { font-size: 13px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+  .status-badge {
+    display: inline-block; margin: 14px 0 10px; padding: 10px 28px; border-radius: 30px;
+    font-size: 26px; font-weight: 800; color: #fff; background: var(--muted); transition: background 0.3s;
+  }
+  .status-card .meta { font-size: 14px; color: var(--muted); margin-top: 4px; }
+  .status-card .stale {
+    display: none; margin-top: 12px; font-size: 13px; color: var(--amber);
+    background: #FFF6E5; padding: 8px 14px; border-radius: 10px; font-weight: 600;
+  }
+  .status-card.is-stale .stale { display: block; }
+
+  /* Report buttons */
+  .report-label { font-size: 15px; font-weight: 700; color: var(--navy); margin-bottom: 12px; text-align: center; }
+  .buttons { display: flex; flex-direction: column; gap: 12px; }
+  .btn {
+    border: none; border-radius: 16px; padding: 18px; font-size: 17px; font-weight: 700;
+    color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    gap: 10px; transition: transform 0.1s, opacity 0.2s; position: relative;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn .emoji { font-size: 22px; }
+  .btn-empty { background: var(--green); }
+  .btn-full { background: var(--amber); }
+  .btn-packed { background: var(--red); }
+  .btn:disabled { opacity: 0.5; cursor: default; }
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: var(--navy); color: #fff; padding: 14px 24px; border-radius: 30px;
+    font-size: 15px; font-weight: 600; box-shadow: 0 8px 30px rgba(0,0,0,0.25);
+    transition: transform 0.3s; z-index: 100;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  footer { text-align: center; margin-top: 28px; font-size: 12px; color: var(--muted); line-height: 1.6; }
+  footer strong { color: var(--blue); }
+
+  .loading { color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <span class="logo">📍 Is it Busy?</span>
+    <h1>Campus Status</h1>
+    <p>Tap to report. Check before you walk.</p>
+  </header>
+
+  <div class="selector" id="selector"></div>
+
+  <div class="status-card" id="statusCard">
+    <div class="facility-name" id="facilityName">—</div>
+    <div class="status-badge" id="statusBadge">Loading…</div>
+    <div class="meta" id="statusMeta"><span class="loading">Checking latest report…</span></div>
+    <div class="stale" id="staleWarning">⚠️ This report is old — it may not be accurate anymore.</div>
+  </div>
+
+  <div class="report-label">How busy is it right now?</div>
+  <div class="buttons">
+    <button class="btn btn-empty" data-status="Empty" onclick="report('Empty')">
+      <span class="emoji">🟢</span> Empty — come right now
+    </button>
+    <button class="btn btn-full" data-status="Getting Full" onclick="report('Getting Full')">
+      <span class="emoji">🟡</span> Getting Full — some seats
+    </button>
+    <button class="btn btn-packed" data-status="Packed" onclick="report('Packed')">
+      <span class="emoji">🔴</span> Packed — I'd wait a while
+    </button>
+  </div>
+
+  <footer>
+    Built by <strong>Team Venus</strong> · ITIH101 Innovation Hub 1<br>
+    Powered by your fellow students 💙
+  </footer>
+
+</div>
+
+<div class="toast" id="toast">Thanks! Report submitted ✓</div>
+
+<script>
+  // ===================================================================
+  //  CONFIG — paste your Google Apps Script Web App URL here.
+  //  (Setup instructions are in the README file.)
+  //  Until you add a real URL, the page runs in DEMO MODE with fake data.
+  // ===================================================================
+  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzQLFk_xZj-b9sqYg4v36bN5fy_dgHx-ZAI7AVezD8uXaMUOImDplfbfp6nRA6JP9Ma/exec";
+
+  const FACILITIES = ["Cafeteria", "Library", "Gym"];
+
+  const STATUS_COLORS = {
+    "Empty":        "#00C9A7",
+    "Getting Full": "#F9A825",
+    "Packed":       "#E53935"
+  };
+
+  const STALE_MINUTES = 120; // reports older than this are flagged
+
+  let currentFacility = FACILITIES[0];
+  let demoData = {}; // used only when no SCRIPT_URL is set
+
+  // ---- Build the facility selector ----
+  const selectorEl = document.getElementById("selector");
+  FACILITIES.forEach((f, i) => {
+    const btn = document.createElement("button");
+    btn.textContent = f;
+    if (i === 0) btn.classList.add("active");
+    btn.onclick = () => {
+      currentFacility = f;
+      document.querySelectorAll("#selector button").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      loadStatus();
+    };
+    selectorEl.appendChild(btn);
+  });
+
+  const isDemoMode = () => SCRIPT_URL === "PASTE_YOUR_WEB_APP_URL_HERE";
+
+  // ---- Report a status ----
+  async function report(status) {
+    const buttons = document.querySelectorAll(".btn");
+    buttons.forEach(b => b.disabled = true);
+
+    if (isDemoMode()) {
+      demoData[currentFacility] = { status: status, time: new Date().toISOString() };
+      showToast("Thanks! Report submitted ✓ (demo)");
+      loadStatus();
+      setTimeout(() => buttons.forEach(b => b.disabled = false), 800);
+      return;
+    }
+
+    try {
+      await fetch(SCRIPT_URL, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ facility: currentFacility, status: status })
+      });
+      showToast("Thanks! Report submitted ✓");
+      setTimeout(loadStatus, 1000); // give the sheet a moment to write
+    } catch (err) {
+      showToast("Couldn't send — check your connection");
+    }
+    setTimeout(() => buttons.forEach(b => b.disabled = false), 1000);
+  }
+
+  // ---- Load the latest status ----
+  async function loadStatus() {
+    const card = document.getElementById("statusCard");
+    const nameEl = document.getElementById("facilityName");
+    const badgeEl = document.getElementById("statusBadge");
+    const metaEl = document.getElementById("statusMeta");
+
+    nameEl.textContent = currentFacility;
+
+    let latest = null;
+
+    if (isDemoMode()) {
+      latest = demoData[currentFacility] || seedDemo(currentFacility);
+    } else {
+      badgeEl.textContent = "Loading…";
+      metaEl.innerHTML = '<span class="loading">Checking latest report…</span>';
+      try {
+        const res = await fetch(SCRIPT_URL + "?facility=" + encodeURIComponent(currentFacility));
+        const data = await res.json();
+        latest = data && data.status ? data : null;
+      } catch (err) {
+        badgeEl.textContent = "No data";
+        badgeEl.style.background = "#6B7894";
+        metaEl.textContent = "Couldn't load the latest report.";
+        return;
+      }
+    }
+
+    if (!latest) {
+      badgeEl.textContent = "No reports yet";
+      badgeEl.style.background = "#6B7894";
+      card.style.borderTopColor = "#6B7894";
+      metaEl.textContent = "Be the first to report!";
+      card.classList.remove("is-stale");
+      return;
+    }
+
+    const color = STATUS_COLORS[latest.status] || "#6B7894";
+    badgeEl.textContent = latest.status;
+    badgeEl.style.background = color;
+    card.style.borderTopColor = color;
+
+    const mins = Math.floor((Date.now() - new Date(latest.time).getTime()) / 60000);
+    metaEl.textContent = "Reported " + timeAgo(mins);
+
+    if (mins >= STALE_MINUTES) card.classList.add("is-stale");
+    else card.classList.remove("is-stale");
+  }
+
+  // ---- Helpers ----
+  function timeAgo(mins) {
+    if (mins < 1) return "just now";
+    if (mins === 1) return "1 minute ago";
+    if (mins < 60) return mins + " minutes ago";
+    const hrs = Math.floor(mins / 60);
+    if (hrs === 1) return "1 hour ago";
+    if (hrs < 24) return hrs + " hours ago";
+    const days = Math.floor(hrs / 24);
+    return days === 1 ? "1 day ago" : days + " days ago";
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    setTimeout(() => t.classList.remove("show"), 2500);
+  }
+
+  function seedDemo(facility) {
+    // gives each facility a believable starting status in demo mode
+    const seeds = {
+      "Cafeteria": { status: "Packed", minsAgo: 8 },
+      "Library":   { status: "Getting Full", minsAgo: 23 },
+      "Gym":       { status: "Empty", minsAgo: 5 }
+    };
+    const s = seeds[facility] || { status: "Empty", minsAgo: 10 };
+    const obj = { status: s.status, time: new Date(Date.now() - s.minsAgo * 60000).toISOString() };
+    demoData[facility] = obj;
+    return obj;
+  }
+
+  // ---- Auto-refresh every 30s + initial load ----
+  loadStatus();
+  setInterval(loadStatus, 30000);
+</script>
+</body>
+</html>
